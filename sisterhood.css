@@ -35,7 +35,6 @@
   bottom: 0;
   translate: -50% 50%;
   pointer-events: none;
-  animation-fill-mode: both;   /* stay hidden during the delay */
 }
 
 /* 1. Yellow circle (the "cutout") pops in with a soft overshoot */
@@ -45,7 +44,7 @@
   border-radius: 50%;
   background: var(--sh-yellow);
   z-index: 3;
-  animation: sh-pop 600ms cubic-bezier(0.34, 1.56, 0.64, 1) 200ms;
+  animation: sh-pop 600ms cubic-bezier(0.34, 1.56, 0.64, 1) 200ms both;
 }
 
 /* 2. Sun spins and settles into place a beat later */
@@ -54,7 +53,7 @@
   height: var(--sh-sun);
   background: url("sun-orange.png") center / contain no-repeat;
   z-index: 4;
-  animation: sh-sun-in 900ms cubic-bezier(0.22, 1, 0.36, 1) 340ms;
+  animation: sh-sun-in 900ms cubic-bezier(0.22, 1, 0.36, 1) 340ms both;
 }
 
 @keyframes sh-pop {

@@ -1,3 +1,94 @@
-h2 {
-  color: red !important;
+/* ==========================================================
+   Sisterhood: sun "cutout" on the bottom edge of the hero photo
+   Hero = Square banner block #QYxCKS (layout: banner-text-below).
+   The circle and the sun are pseudo-elements on the banner's
+   <figure>, so the client can replace the photo in Square
+   without breaking anything.
+   sun-orange.png must sit next to this file in the repo.
+   ========================================================== */
+
+#QYxCKS {
+  --sh-size: 150px;        /* yellow circle */
+  --sh-sun: 118px;         /* sun inside it */
+  --sh-yellow: #FDF4A2;
+}
+
+/* Image wrapper: positioning context, stacked above the text group */
+#QYxCKS [id$="/image"] {
+  position: relative;
+  z-index: 2;
+  overflow: visible !important;
+}
+
+/* The figure holds the photo; let the circle hang out of it */
+#QYxCKS figure {
+  position: relative;
+  overflow: visible !important;
+}
+
+/* Shared placement: centred on the photo's bottom edge */
+#QYxCKS figure::before,
+#QYxCKS figure::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  translate: -50% 50%;
+  pointer-events: none;
+  animation-fill-mode: both;   /* stay hidden during the delay */
+}
+
+/* 1. Yellow circle (the "cutout") pops in with a soft overshoot */
+#QYxCKS figure::before {
+  width: var(--sh-size);
+  height: var(--sh-size);
+  border-radius: 50%;
+  background: var(--sh-yellow);
+  z-index: 3;
+  animation: sh-pop 600ms cubic-bezier(0.34, 1.56, 0.64, 1) 200ms;
+}
+
+/* 2. Sun spins and settles into place a beat later */
+#QYxCKS figure::after {
+  width: var(--sh-sun);
+  height: var(--sh-sun);
+  background: url("sun-orange.png") center / contain no-repeat;
+  z-index: 4;
+  animation: sh-sun-in 900ms cubic-bezier(0.22, 1, 0.36, 1) 340ms;
+}
+
+@keyframes sh-pop {
+  0%   { scale: 0;   opacity: 0; }
+  40%  {             opacity: 1; }
+  100% { scale: 1;   opacity: 1; }
+}
+
+@keyframes sh-sun-in {
+  0%   { scale: 0.3; rotate: -140deg; opacity: 0; }
+  35%  {                              opacity: 1; }
+  100% { scale: 1;   rotate: 0deg;    opacity: 1; }
+}
+
+/* Push the headline down so it clears the bottom half of the circle */
+#QYxCKS .element-group {
+  padding-top: 72px !important;
+}
+
+/* Phones (Square switches layouts at 600px) */
+@media (max-width: 599px) {
+  #QYxCKS {
+    --sh-size: 96px;
+    --sh-sun: 76px;
+  }
+  #QYxCKS .element-group {
+    padding-top: 44px !important;
+  }
+}
+
+/* Visitors who ask for less motion get it in place, no animation */
+@media (prefers-reduced-motion: reduce) {
+  #QYxCKS figure::before,
+  #QYxCKS figure::after {
+    animation: none;
+  }
 }

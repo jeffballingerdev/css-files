@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upcoming events · Sisterhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chelsea+Market&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* ---------------------------------------------------------------
+   Brand tokens: match the Square theme
+   --------------------------------------------------------------- */
+:root {
+  --yellow: #FDF4A2;
+  --cream: #FFFBD6;
+  --orange: #F56B34;
+  --orange-soft: #FBC3A6;
+  --plum: #27031C;
+  --plum-70: #5E4352;
+  --ink-on-orange: #141414;
+  --radius-card: 16px;
+  /* If you host the licensed KG HAPPY Solid font, add an @font-face for it
+     and it will be used automatically; Chelsea Market is the fallback. */
+  --font-heading: "KG HAPPY Solid", "Chelsea Market", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  background: transparent;           /* Square section colour shows through */
+  color: var(--plum);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.events {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 8px 16px 24px;
+}
+
+/* Month heading */
+.month {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 28px 0 14px;
+  font-family: var(--font-heading);
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+.month:first-child { margin-top: 4px; }
+.month::after {
+  content: "";
+  flex: 1;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--orange);
+  opacity: 0.45;
+}
+
+/* Event card */
+.card {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  padding: 20px;
+  margin-bottom: 14px;
+  background: var(--cream);
+  border: 1.5px solid rgba(39, 3, 28, 0.12);
+  border-radius: var(--radius-card);
+  opacity: 0;
+  transform: translateY(10px);
+  animation: rise 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes rise { to { opacity: 1; transform: none; } }
+
+/* Date badge */
+.date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  background: var(--orange);
+  color: var(--ink-on-orange);
+  text-align: center;
+}
+.date .mon {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.date .day {
+  font-family: var(--font-heading);
+  font-size: 38px;
+  line-height: 1;
+  margin-top: 2px;
+}
+.date .dow {
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-family: var(--font-heading);
+  font-weight: 400;
+  font-size: 24px;
+  line-height: 1.15;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--plum-70);
+}
+.meta li { display: inline-flex; align-items: center; gap: 6px; }
+.meta svg { flex: none; }
+.desc {
+  margin: 0 0 14px;
+  font-size: 15px;
+  white-space: pre-line;
+}
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* Buttons: same pill shapes as the Square theme */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: 100px;
+  font: 500 15px/1 var(--font-body);
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--orange); color: var(--ink-on-orange); border: 0; }
+.btn-primary:hover { background: #F58B34; }
+.btn-secondary { background: transparent; color: var(--plum); border: 2px solid var(--plum); }
+.btn-secondary:hover { background: rgba(39, 3, 28, 0.08); }
+.btn:focus-visible { outline: 3px solid var(--plum); outline-offset: 2px; }
+
+/* Empty / error / loading */
+.notice {
+  padding: 40px 24px;
+  text-align: center;
+  background: var(--cream);
+  border-radius: var(--radius-card);
+  border: 1.5px solid rgba(39, 3, 28, 0.12);
+}
+.notice-sun {
+  display: block;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto;
+  animation: sun-spin 40s linear infinite;
+}
+@keyframes sun-spin { to { transform: rotate(360deg); } }
+.actions--center { justify-content: center; margin-top: 20px; }
+.notice h2 {
+  margin: 12px 0 6px;
+  font-family: var(--font-heading);
+  font-weight: 400;
+  font-size: 26px;
+}
+.notice p { max-width: 440px; margin: 0 auto; color: var(--plum-70); }
+
+.skeleton {
+  height: 128px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-card);
+  background: linear-gradient(90deg, rgba(255,251,214,.6) 0%, rgba(255,251,214,1) 50%, rgba(255,251,214,.6) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+.demo-note {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--plum-70);
+  text-align: center;
+}
+
+/* Phones */
+@media (max-width: 520px) {
+  .card { grid-template-columns: 64px minmax(0, 1fr); gap: 14px; padding: 16px; }
+  .date .day { font-size: 28px; }
+  .date .mon { font-size: 11px; }
+  .date .dow { display: none; }
+  .title { font-size: 20px; }
+  .month { font-size: 24px; }
+  .btn { flex: 1 1 auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card { animation: none; opacity: 1; transform: none; }
+  .skeleton, .notice-sun { animation: none; }
+}
+</style>
+</head>
+<body>
+<main class="events" id="events" aria-live="polite">
+  <div class="skeleton"></div>
+  <div class="skeleton"></div>
+</main>
+
+<script>
+/* ---------------------------------------------------------------
+   SETTINGS: fill these in (see setup notes)
+   --------------------------------------------------------------- */
+const CONFIG = {
+  API_KEY: "",                 // Google Calendar API key (restricted to your GitHub Pages site)
+  CALENDAR_ID: "",             // e.g. abc123@group.calendar.google.com
+  MAX_EVENTS: 12,              // how many upcoming events to show
+  PARENT_ORIGIN: "*"           // optional: "https://shopsisterhood.square.site" to lock down resize messages
+};
+
+/* ---------------------------------------------------------------
+   Helpers
+   --------------------------------------------------------------- */
+const $events = document.getElementById("events");
+const params = new URLSearchParams(location.search);
+const DEMO = params.has("demo") || !CONFIG.API_KEY || !CONFIG.CALENDAR_ID;
+
+const ICONS = {
+  clock: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  pin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  heart: '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#F56B34" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.4C19.5 15.4 12 20 12 20z"/></svg>'
+};
+
+function el(tag, attrs = {}, children = []) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "text") n.textContent = v;
+    else if (k === "html") n.innerHTML = v;          // only used with our own static icons
+    else n.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) if (c) n.appendChild(c);
+  return n;
+}
+
+/* Google descriptions may contain HTML. Turn them into plain text and
+   pull out the first link to use as the event's button. */
+function parseDescription(raw) {
+  if (!raw) return { text: "", link: null };
+  const doc = new DOMParser().parseFromString(raw.replace(/<br\s*\/?>/gi, "\n"), "text/html");
+  let link = null;
+  const a = doc.querySelector("a[href]");
+  if (a && /^https?:/i.test(a.getAttribute("href"))) link = a.getAttribute("href");
+  let text = (doc.body.textContent || "").trim();
+  if (!link) {
+    const m = text.match(/https?:\/\/[^\s<>"]+/i);
+    if (m) link = m[0];
+  }
+  if (link) {
+    text = text.split(link).join("")
+      .replace(/^[^\n:]{1,30}:[ \t]*$/gm, "")        // drop a leftover label like "Tickets:"
+      .replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+  return { text, link };
+}
+
+function buttonLabel(url) {
+  return /ticket|eventbrite|square\.site|squareup|checkout|rsvp/i.test(url) ? "Get tickets" : "Learn more";
+}
+
+function getStart(ev) {
+  return ev.start.dateTime ? new Date(ev.start.dateTime) : dateOnly(ev.start.date);
+}
+function getEnd(ev) {
+  if (ev.end.dateTime) return new Date(ev.end.dateTime);
+  const d = dateOnly(ev.end.date); d.setDate(d.getDate() - 1); return d;   // all-day end is exclusive
+}
+function dateOnly(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+
+function fmt(date, opts, tz) {
+  return new Intl.DateTimeFormat("en-US", Object.assign({}, opts, tz ? { timeZone: tz } : {})).format(date);
+}
+
+function whenText(ev, tz) {
+  const allDay = !ev.start.dateTime;
+  const s = getStart(ev), e = getEnd(ev);
+  const zone = allDay ? undefined : tz;
+  const sameDay = fmt(s, { dateStyle: "short" }, zone) === fmt(e, { dateStyle: "short" }, zone);
+  const wk = (d) => fmt(d, { weekday: "long" }, zone);
+  const short = (d) => fmt(d, { weekday: "short", month: "short", day: "numeric" }, zone);
+  if (allDay) return sameDay ? `${wk(s)} · All day` : `${short(s)} – ${short(e)}`;
+
+  const time = (d) => fmt(d, { hour: "numeric", minute: "2-digit" }, tz).replace(":00", "");
+  if (sameDay) {
+    let a = time(s), b = time(e);
+    const ma = a.slice(-2), mb = b.slice(-2);
+    if (ma === mb) a = a.slice(0, -3);          // "6 – 8 PM" instead of "6 PM – 8 PM"
+    return `${wk(s)} · ${a} – ${b}`;
+  }
+  return `${short(s)}, ${time(s)} – ${short(e)}, ${time(e)}`;
+}
+
+/* .ics download so visitors can add the event to any calendar app */
+function icsFor(ev) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const utc = (d) => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
+  const day = (s) => s.replace(/-/g, "");
+  const esc = (s) => (s || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+  const { text } = parseDescription(ev.description);
+  const lines = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Sisterhood//Events//EN", "BEGIN:VEVENT",
+    `UID:${ev.id || Date.now()}@shopsisterhood`,
+    `DTSTAMP:${utc(new Date())}`,
+    ev.start.dateTime ? `DTSTART:${utc(new Date(ev.start.dateTime))}` : `DTSTART;VALUE=DATE:${day(ev.start.date)}`,
+    ev.end.dateTime ? `DTEND:${utc(new Date(ev.end.dateTime))}` : `DTEND;VALUE=DATE:${day(ev.end.date)}`,
+    `SUMMARY:${esc(ev.summary || "Sisterhood event")}`,
+    ev.location ? `LOCATION:${esc(ev.location)}` : "",
+    text ? `DESCRIPTION:${esc(text)}` : "",
+    "END:VEVENT", "END:VCALENDAR"
+  ].filter(Boolean);
+  return new Blob([lines.join("\r\n")], { type: "text/calendar" });
+}
+
+/* ---------------------------------------------------------------
+   Rendering
+   --------------------------------------------------------------- */
+function renderCard(ev, tz, index) {
+  const s = getStart(ev);
+  const zone = ev.start.dateTime ? tz : undefined;
+  const { text, link } = parseDescription(ev.description);
+
+  const badge = el("div", { class: "date", "aria-hidden": "true" }, [
+    el("span", { class: "mon", text: fmt(s, { month: "short" }, zone) }),
+    el("span", { class: "day", text: fmt(s, { day: "numeric" }, zone) }),
+    el("span", { class: "dow", text: fmt(s, { weekday: "short" }, zone) })
+  ]);
+
+  const meta = el("ul", { class: "meta" }, [
+    el("li", {}, [el("span", { html: ICONS.clock }), el("span", { text: whenText(ev, tz) })]),
+    ev.location ? el("li", {}, [el("span", { html: ICONS.pin }), el("span", { text: ev.location })]) : null
+  ]);
+
+  const actions = el("div", { class: "actions" });
+  if (link) actions.appendChild(el("a", { class: "btn btn-primary", href: link, target: "_blank", rel: "noopener", text: buttonLabel(link) }));
+  const add = el("button", { class: "btn btn-secondary", type: "button", text: "Add to calendar" });
+  add.addEventListener("click", () => {
+    const url = URL.createObjectURL(icsFor(ev));
+    const a = el("a", { href: url, download: `${(ev.summary || "event").replace(/[^\w]+/g, "-").toLowerCase()}.ics` });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  actions.appendChild(add);
+
+  const body = el("div", {}, [
+    el("h3", { class: "title", text: ev.summary || "Sisterhood event" }),
+    meta,
+    text ? el("p", { class: "desc", text }) : null,
+    actions
+  ]);
+
+  const card = el("article", { class: "card" }, [badge, body]);
+  card.style.animationDelay = `${Math.min(index, 8) * 70}ms`;
+  return card;
+}
+
+function render(items, tz) {
+  $events.replaceChildren();
+  if (DEMO && params.get("demo") !== "empty") $events.appendChild(el("p", { class: "demo-note", text: "Preview with sample events. Add your API key and calendar ID to show real ones." }));
+
+  if (!items.length) {
+    $events.appendChild(el("div", { class: "notice" }, [
+      el("img", { class: "notice-sun", src: "sun-orange.png", alt: "", width: "72", height: "72" }),
+      el("h2", { text: "New events coming soon" }),
+      el("p", { text: "We're cooking up our next get-together. Follow along on Instagram to hear about it first." }),
+      el("div", { class: "actions actions--center" }, [
+        el("a", { class: "btn btn-primary", href: "https://www.instagram.com/shopsisterhood/", target: "_blank", rel: "noopener", text: "Follow @shopsisterhood" })
+      ])
+    ]));
+    return;
+  }
+
+  let currentMonth = "";
+  items.forEach((ev, i) => {
+    const s = getStart(ev);
+    const m = fmt(s, { month: "long", year: "numeric" }, ev.start.dateTime ? tz : undefined);
+    if (m !== currentMonth) {
+      currentMonth = m;
+      const sameYear = s.getFullYear() === new Date().getFullYear();
+      $events.appendChild(el("h2", { class: "month", text: sameYear ? m.replace(/ \d{4}$/, "") : m }));
+    }
+    $events.appendChild(renderCard(ev, tz, i));
+  });
+}
+
+function renderError() {
+  $events.replaceChildren(el("div", { class: "notice" }, [
+    el("div", { html: ICONS.heart }),
+    el("h2", { text: "Events are taking a little nap" }),
+    el("p", { text: "We couldn't load the calendar just now. Please try again in a moment." })
+  ]));
+}
+
+/* ---------------------------------------------------------------
+   Data
+   --------------------------------------------------------------- */
+function demoEvents() {
+  const d = (offsetDays, h, m = 0) => { const x = new Date(); x.setDate(x.getDate() + offsetDays); x.setHours(h, m, 0, 0); return x.toISOString(); };
+  const ymd = (offsetDays) => { const x = new Date(); x.setDate(x.getDate() + offsetDays); return x.toISOString().slice(0, 10); };
+  return [
+    { id: "d1", summary: "Mommy & Me Fall Styling Night", start: { dateTime: d(5, 18) }, end: { dateTime: d(5, 20) },
+      location: "Sisterhood Boutique", description: "Bring your girl for an evening of outfit styling, sweet treats and 15% off fall arrivals.\nhttps://shopsisterhood.square.site/s/shop" },
+    { id: "d2", summary: "Halloween Costume Parade", start: { dateTime: d(12, 10, 30) }, end: { dateTime: d(12, 12) },
+      location: "Main Street, out front of the shop", description: "Little ghosts and goblins welcome! Candy for every costume." },
+    { id: "d3", summary: "Holiday Pop-Up Market", start: { date: ymd(26) }, end: { date: ymd(28) },
+      location: "Community Center", description: "Two days of local makers, holiday gifts and Sisterhood exclusives.\nTickets: https://www.eventbrite.com/" }
+  ];
+}
+
+async function fetchEvents() {
+  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CONFIG.CALENDAR_ID)}/events`);
+  url.search = new URLSearchParams({
+    key: CONFIG.API_KEY,
+    timeMin: new Date().toISOString(),
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: String(CONFIG.MAX_EVENTS)
+  });
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Calendar API ${res.status}`);
+  const data = await res.json();
+  return { items: (data.items || []).filter((e) => e.status !== "cancelled" && e.visibility !== "private"), tz: data.timeZone };
+}
+
+/* ---------------------------------------------------------------
+   Auto-height: tell the Square page how tall this frame should be
+   --------------------------------------------------------------- */
+function postHeight() {
+  const h = Math.ceil(document.documentElement.scrollHeight);
+  if (window.parent !== window) window.parent.postMessage({ type: "sh-events-height", height: h }, CONFIG.PARENT_ORIGIN);
+}
+new ResizeObserver(postHeight).observe(document.documentElement);
+window.addEventListener("load", postHeight);
+
+(async function init() {
+  try {
+    if (DEMO) render(params.get("demo") === "empty" ? [] : demoEvents(), "America/New_York");
+    else {
+      const { items, tz } = await fetchEvents();
+      render(items, tz);
+    }
+  } catch (err) {
+    console.error(err);
+    renderError();
+  }
+  postHeight();
+})();
+</script>
+</body>
+</html>

@@ -38,10 +38,12 @@ html, body {
 }
 
 .events {
-  max-width: 760px;
+  max-width: 880px;
+  min-width: 300px;          /* below this the Square wrapper scrolls sideways */
   margin: 0 auto;
-  padding: 8px 16px 24px;
+  padding: 8px 4px 24px;     /* the Square section already provides side padding */
 }
+.title, .desc, .meta { overflow-wrap: anywhere; }   /* long words or links wrap instead of overflowing */
 
 /* Month heading */
 .month {
@@ -132,6 +134,16 @@ html, body {
 }
 .meta li { display: inline-flex; align-items: center; gap: 6px; }
 .meta svg { flex: none; }
+.map-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(245, 107, 52, 0.6);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  transition: color 150ms ease, text-decoration-color 150ms ease;
+}
+.map-link:hover { color: var(--plum); text-decoration-color: var(--orange); }
+.map-link:focus-visible { outline: 3px solid var(--plum); outline-offset: 2px; border-radius: 4px; }
 .desc {
   margin: 0 0 14px;
   font-size: 15px;
@@ -228,7 +240,8 @@ html, body {
 
 /* Phones */
 @media (max-width: 520px) {
-  .card { grid-template-columns: 64px minmax(0, 1fr); gap: 14px; padding: 16px; }
+  .events { padding-left: 0; padding-right: 0; }
+  .card { grid-template-columns: 56px minmax(0, 1fr); gap: 12px; padding: 14px; }
   .date .day { font-size: 28px; }
   .date .mon { font-size: 11px; }
   .date .dow { display: none; }
@@ -255,7 +268,7 @@ html, body {
    (File → Share → Publish to web → Events → Comma-separated values)
    --------------------------------------------------------------- */
 const CONFIG = {
-  SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1dDBQlKTjgRd6wdSOL1qzGX3hH_d_zB_MgnxyjgZsYbilsXPOJyvF9DUaBWKhHNP22WYz4hYgxpeR/pub?gid=1176354909&single=true&output=csv",           // https://docs.google.com/spreadsheets/d/e/…/pub?gid=0&single=true&output=csv
+  SHEET_CSV_URL: "",           // https://docs.google.com/spreadsheets/d/e/…/pub?gid=0&single=true&output=csv
   MAX_EVENTS: 12,              // how many upcoming events to show
   DEFAULT_BUTTON_TEXT: "Learn more",
   TIME_ZONE: "America/New_York",  // shop time zone, so Google Calendar saves the right time
@@ -326,7 +339,8 @@ const COLUMN_ALIASES = {
   starttime: ["starttime", "time", "from"],
   endtime: ["endtime", "to"],
   title: ["title", "event", "eventname", "name"],
-  location: ["location", "where", "place"],
+  location: ["location", "where", "place", "venue"],
+  address: ["address", "streetaddress", "mapaddress"],
   description: ["description", "details", "about"],
   buttontext: ["buttontext", "button", "buttonlabel"],
   buttonlink: ["buttonlink", "link", "url", "ticketlink"],
@@ -398,6 +412,7 @@ function rowsToEvents(rows) {
     events.push({
       title,
       location: get(r, "location"),
+      address: get(r, "address"),
       description: get(r, "description"),
       allDay: !st,
       start: st ? withTime(startDay, st) : startDay,
@@ -455,6 +470,9 @@ function whenText(ev) {
 const pad2 = (n) => String(n).padStart(2, "0");
 const ymdOf = (d) => `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
 const dayAfter = (d) => { const x = new Date(d); x.setDate(x.getDate() + 1); return x; };
+/* "Location, Address" for calendar apps, so maps work there too */
+const placeOf = (ev) => [ev.location, ev.address].filter(Boolean).filter((v, i, a) => i === 0 || !a[0].includes(v)).join(", ");
+const mapsUrl = (address) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 const endOf = (ev) => ev.end || new Date(ev.start.getTime() + 60 * 60 * 1000);
 const detailsOf = (ev) => [ev.description, ev.button ? `${ev.button.text}: ${ev.button.href}` : ""].filter(Boolean).join("\n\n");
 
@@ -465,7 +483,7 @@ function googleUrl(ev) {
     text: ev.title,
     dates: ev.allDay ? `${ymdOf(ev.start)}/${ymdOf(dayAfter(ev.lastDay))}` : `${t(ev.start)}/${t(endOf(ev))}`,
     details: detailsOf(ev),
-    location: ev.location || ""
+    location: placeOf(ev)
   });
   if (!ev.allDay) p.set("ctz", CONFIG.TIME_ZONE);
   return `https://calendar.google.com/calendar/render?${p}`;
@@ -482,7 +500,7 @@ function outlookUrl(ev) {
     enddt: ev.allDay ? iso(dayAfter(ev.lastDay)) : isoT(endOf(ev)),
     allday: ev.allDay ? "true" : "false",
     body: detailsOf(ev),
-    location: ev.location || ""
+    location: placeOf(ev)
   });
   return `https://outlook.live.com/calendar/0/deeplink/compose?${p}`;
 }
@@ -514,7 +532,7 @@ function icsFor(ev) {
     `UID:${ymd(ev.start)}-${ev.title.replace(/[^\w]+/g, "-").toLowerCase()}@shopsisterhood`,
     `DTSTAMP:${stamp}`, dtStart, dtEnd,
     `SUMMARY:${esc(ev.title)}`,
-    ev.location ? `LOCATION:${esc(ev.location)}` : "",
+    placeOf(ev) ? `LOCATION:${esc(placeOf(ev))}` : "",
     ev.description ? `DESCRIPTION:${esc(ev.description)}` : "",
     ev.button ? `URL:${ev.button.href}` : "",
     "END:VEVENT", "END:VCALENDAR"
@@ -534,7 +552,12 @@ function renderCard(ev, index) {
 
   const meta = el("ul", { class: "meta" }, [
     el("li", {}, [el("span", { html: ICONS.clock }), el("span", { text: whenText(ev) })]),
-    ev.location ? el("li", {}, [el("span", { html: ICONS.pin }), el("span", { text: ev.location })]) : null
+    (ev.location || ev.address) ? el("li", {}, [
+      el("span", { html: ICONS.pin }),
+      ev.address
+        ? el("a", { class: "map-link", href: mapsUrl(ev.address), target: "_blank", rel: "noopener", title: `Open ${ev.address} in Google Maps`, text: ev.location || ev.address })
+        : el("span", { text: ev.location })
+    ]) : null
   ]);
 
   const actions = el("div", { class: "actions" });
@@ -588,7 +611,7 @@ function render(items) {
       el("h2", { text: "New events coming soon" }),
       el("p", { text: "We are already dreaming up what's next. Follow along on Instagram to be the first to hear about it!" }),
       el("div", { class: "actions actions--center" }, [
-      el("a", { class: "btn btn-primary", href: "https://www.instagram.com/shopsisterhood/", target: "_blank", rel: "noopener", text: "Follow @shopsisterhood" })
+        el("a", { class: "btn btn-primary", href: "https://www.instagram.com/shopsisterhood/", target: "_blank", rel: "noopener", text: "Follow @shopsisterhood" })
       ])
     ]));
     return;
@@ -618,11 +641,11 @@ function renderError() {
 function demoEvents() {
   const day = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`; };
   return rowsToEvents([
-    ["Date", "End date", "Start time", "End time", "Title", "Location", "Description", "Button text", "Button link", "Hide"],
-    [day(5), "", "6:00 PM", "8:00 PM", "Mommy & Me Fall Styling Night", "Sisterhood Boutique", "Bring your girl for an evening of outfit styling, sweet treats and 15% off fall arrivals.", "Get tickets", "shopsisterhood.square.site/s/shop", ""],
-    [day(12), "", "10:30 AM", "12:00 PM", "Little Makers Craft Morning", "Sisterhood Boutique", "A cozy morning of crafts and cocoa for girls ages 4–10. Moms, grab a coffee and browse!", "", "", ""],
-    [day(26), day(27), "", "", "Holiday Pop-Up Market", "Community Center", "Two days of local makers, holiday gifts and Sisterhood exclusives.", "RSVP", "https://www.eventbrite.com/", ""],
-    [day(40), "", "", "", "Secret draft event", "", "This row is hidden", "", "", "TRUE"]
+    ["Date", "End date", "Start time", "End time", "Title", "Description", "Location", "Address", "Button text", "Button link", "Hide"],
+    [day(5), "", "6:00 PM", "8:00 PM", "Mommy & Me Fall Styling Night", "Bring your girl for an evening of outfit styling, sweet treats and 15% off fall arrivals.", "Sisterhood Boutique", "123 Main St, Anytown, NY", "Get tickets", "shopsisterhood.square.site/s/shop", ""],
+    [day(12), "", "10:30 AM", "12:00 PM", "Little Makers Craft Morning", "A cozy morning of crafts and cocoa for girls ages 4–10. Moms, grab a coffee and browse!", "Sisterhood Boutique", "", "", "", ""],
+    [day(26), day(27), "", "", "Holiday Pop-Up Market", "Two days of local makers, holiday gifts and Sisterhood exclusives.", "Community Center", "", "RSVP", "https://www.eventbrite.com/", ""],
+    [day(40), "", "", "", "Secret draft event", "This row is hidden", "", "", "", "", "TRUE"]
   ]);
 }
 

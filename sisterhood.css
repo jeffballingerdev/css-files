@@ -97,21 +97,12 @@
 
 /* ==========================================================
    Event calendar embed
-   Square wraps embed code in its own frame (.frame-container,
-   fixed at 600px). The calendar fills that frame and scrolls
-   inside it; these rules set the frame's size and width.
+   Square wraps embed code in its own frame (.frame-container)
+   and sizes it to the iframe's height in the embed code (720px).
+   The events scroll inside it; these rules only widen it.
    If you add a second embed section, swap the selector below
    for the block's ID, e.g. #gBJMRH.
    ========================================================== */
-[data-block-purpose^="embed-code"]:has(.frame-container) {
-  --sh-cal-height: min(80vh, 760px);   /* visible height before scrolling */
-}
-
-/* Height of the scroll area */
-[data-block-purpose^="embed-code"] .frame-container {
-  height: var(--sh-cal-height) !important;
-}
-
 /* Wider section with slimmer side padding */
 [data-block-purpose^="embed-code"]:has(.frame-container) .container {
   max-width: 1200px !important;
@@ -135,9 +126,6 @@
 }
 
 @media (max-width: 599px) {
-  [data-block-purpose^="embed-code"]:has(.frame-container) {
-    --sh-cal-height: 75vh;
-  }
   [data-block-purpose^="embed-code"]:has(.frame-container) .container {
     padding-left: 12px !important;
     padding-right: 12px !important;

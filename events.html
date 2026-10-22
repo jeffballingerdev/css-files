@@ -159,6 +159,30 @@ html, body {
 .btn-secondary { background: transparent; color: var(--plum); border: 2px solid var(--plum); }
 .btn-secondary:hover { background: rgba(39, 3, 28, 0.08); }
 .btn:focus-visible { outline: 3px solid var(--plum); outline-offset: 2px; }
+.btn .chev { margin-left: 8px; transition: transform 200ms ease; }
+.btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+
+/* "Add to calendar" choices, revealed inline under the buttons */
+.addcal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  animation: addcal-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.addcal[hidden] { display: none; }
+@keyframes addcal-in { from { opacity: 0; transform: translateY(-4px); } }
+.btn-option {
+  min-height: 40px;
+  padding: 0 16px;
+  gap: 8px;
+  font-size: 14px;
+  background: #fff;
+  color: var(--plum);
+  border: 1.5px solid rgba(39, 3, 28, 0.2);
+}
+.btn-option:hover { border-color: var(--plum); background: #fff; }
+.btn-option svg { flex: none; }
 
 /* Empty / error / loading */
 .notice {
@@ -231,9 +255,10 @@ html, body {
    (File → Share → Publish to web → Events → Comma-separated values)
    --------------------------------------------------------------- */
 const CONFIG = {
-  SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1dDBQlKTjgRd6wdSOL1qzGX3hH_d_zB_MgnxyjgZsYbilsXPOJyvF9DUaBWKhHNP22WYz4hYgxpeR/pub?gid=1176354909&single=true&output=csv",
+  SHEET_CSV_URL: "",           // https://docs.google.com/spreadsheets/d/e/…/pub?gid=0&single=true&output=csv
   MAX_EVENTS: 12,              // how many upcoming events to show
   DEFAULT_BUTTON_TEXT: "Learn more",
+  TIME_ZONE: "America/New_York",  // shop time zone, so Google Calendar saves the right time
   PARENT_ORIGIN: "*"           // optional: "https://shopsisterhood.square.site" to lock down resize messages
 };
 
@@ -247,6 +272,10 @@ const DEMO = params.has("demo") || !CONFIG.SHEET_CSV_URL;
 const ICONS = {
   clock: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   pin: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  chevron: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
+  google: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  apple: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
+  outlook: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
   heart: '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#F56B34" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.4C19.5 15.4 12 20 12 20z"/></svg>'
 };
 
@@ -422,13 +451,56 @@ function whenText(ev) {
 
 /* .ics download so visitors can add the event to any calendar app.
    Times are "floating": they mean shop time, as typed in the sheet. */
+/* Links that open the event pre-filled in Google Calendar / Outlook.com */
+const pad2 = (n) => String(n).padStart(2, "0");
+const ymdOf = (d) => `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+const dayAfter = (d) => { const x = new Date(d); x.setDate(x.getDate() + 1); return x; };
+const endOf = (ev) => ev.end || new Date(ev.start.getTime() + 60 * 60 * 1000);
+const detailsOf = (ev) => [ev.description, ev.button ? `${ev.button.text}: ${ev.button.href}` : ""].filter(Boolean).join("\n\n");
+
+function googleUrl(ev) {
+  const t = (d) => `${ymdOf(d)}T${pad2(d.getHours())}${pad2(d.getMinutes())}00`;
+  const p = new URLSearchParams({
+    action: "TEMPLATE",
+    text: ev.title,
+    dates: ev.allDay ? `${ymdOf(ev.start)}/${ymdOf(dayAfter(ev.lastDay))}` : `${t(ev.start)}/${t(endOf(ev))}`,
+    details: detailsOf(ev),
+    location: ev.location || ""
+  });
+  if (!ev.allDay) p.set("ctz", CONFIG.TIME_ZONE);
+  return `https://calendar.google.com/calendar/render?${p}`;
+}
+
+function outlookUrl(ev) {
+  const iso = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const isoT = (d) => `${iso(d)}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:00`;
+  const p = new URLSearchParams({
+    path: "/calendar/action/compose",
+    rru: "addevent",
+    subject: ev.title,
+    startdt: ev.allDay ? iso(ev.start) : isoT(ev.start),
+    enddt: ev.allDay ? iso(dayAfter(ev.lastDay)) : isoT(endOf(ev)),
+    allday: ev.allDay ? "true" : "false",
+    body: detailsOf(ev),
+    location: ev.location || ""
+  });
+  return `https://outlook.live.com/calendar/0/deeplink/compose?${p}`;
+}
+
+function downloadIcs(ev) {
+  const url = URL.createObjectURL(icsFor(ev));
+  const a = el("a", { href: url, download: `${ev.title.replace(/[^\w]+/g, "-").toLowerCase()}.ics` });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function icsFor(ev) {
   const pad = (n) => String(n).padStart(2, "0");
   const ymd = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
   const local = (d) => `${ymd(d)}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
   const now = new Date();
   const stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}00Z`;
-  const esc = (s) => (s || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\;");
+  const esc = (s) => (s || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
   let dtStart, dtEnd;
   if (ev.allDay) {
     const after = new Date(ev.lastDay); after.setDate(after.getDate() + 1);
@@ -467,20 +539,38 @@ function renderCard(ev, index) {
 
   const actions = el("div", { class: "actions" });
   if (ev.button) actions.appendChild(el("a", { class: "btn btn-primary", href: ev.button.href, target: "_blank", rel: "noopener", text: ev.button.text }));
-  const add = el("button", { class: "btn btn-secondary", type: "button", text: "Add to calendar" });
-  add.addEventListener("click", () => {
-    const url = URL.createObjectURL(icsFor(ev));
-    const a = el("a", { href: url, download: `${ev.title.replace(/[^\w]+/g, "-").toLowerCase()}.ics` });
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const menuId = `addcal-${index}`;
+  const toggle = el("button", { class: "btn btn-secondary", type: "button", "aria-expanded": "false", "aria-controls": menuId }, [
+    el("span", { text: "Add to calendar" }),
+    el("span", { class: "chev", html: ICONS.chevron })
+  ]);
+  actions.appendChild(toggle);
+
+  const menu = el("div", { class: "addcal", id: menuId, hidden: "" }, [
+    el("a", { class: "btn btn-option", href: googleUrl(ev), target: "_blank", rel: "noopener" }, [el("span", { html: ICONS.google }), el("span", { text: "Google Calendar" })]),
+    (() => {
+      const b = el("button", { class: "btn btn-option", type: "button" }, [el("span", { html: ICONS.apple }), el("span", { text: "Apple / iCal" })]);
+      b.addEventListener("click", () => downloadIcs(ev));
+      return b;
+    })(),
+    el("a", { class: "btn btn-option", href: outlookUrl(ev), target: "_blank", rel: "noopener" }, [el("span", { html: ICONS.outlook }), el("span", { text: "Outlook" })])
+  ]);
+
+  toggle.addEventListener("click", () => {
+    const open = toggle.getAttribute("aria-expanded") !== "true";
+    document.querySelectorAll('.btn[aria-expanded="true"]').forEach((t) => {   // close any other open card
+      if (t !== toggle) { t.setAttribute("aria-expanded", "false"); document.getElementById(t.getAttribute("aria-controls")).hidden = true; }
+    });
+    toggle.setAttribute("aria-expanded", String(open));
+    menu.hidden = !open;
   });
-  actions.appendChild(add);
 
   const body = el("div", {}, [
     el("h3", { class: "title", text: ev.title }),
     meta,
     ev.description ? el("p", { class: "desc", text: ev.description }) : null,
-    actions
+    actions,
+    menu
   ]);
 
   const card = el("article", { class: "card" }, [badge, body]);

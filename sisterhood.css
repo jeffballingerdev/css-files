@@ -13,11 +13,6 @@
   --sh-yellow: #FDF4A2;
 }
 
-#QYxCKS .element-group h2 {
-  padding-top: calc(var(--sh-size) / 3) !important;
-  margin-top: 0 !important;
-}
-
 /* Image wrapper: positioning context, stacked above the text group */
 #QYxCKS [id$="/image"] {
   position: relative;
@@ -73,9 +68,14 @@
   100% { scale: 1;   rotate: 0deg;    opacity: 1; }
 }
 
-/* Push the headline down so it clears the bottom half of the circle */
-#QYxCKS .element-group {
-  padding-top: 72px !important;
+/* Space above the headline: half the circle (the part hanging below
+   the photo) plus breathing room. Change --sh-gap to adjust. */
+#QYxCKS {
+  --sh-gap: 28px;
+}
+#QYxCKS .element-group h2 {
+  padding-top: calc(var(--sh-size) / 2 + var(--sh-gap)) !important;
+  margin-top: 0 !important;
 }
 
 /* Phones (Square switches layouts at 600px) */
@@ -83,9 +83,7 @@
   #QYxCKS {
     --sh-size: 96px;
     --sh-sun: 76px;
-  }
-  #QYxCKS .element-group {
-    padding-top: 44px !important;
+    --sh-gap: 20px;
   }
 }
 
@@ -94,5 +92,54 @@
   #QYxCKS figure::before,
   #QYxCKS figure::after {
     animation: none;
+  }
+}
+
+/* ==========================================================
+   Event calendar embed
+   Square wraps embed code in its own frame (.frame-container,
+   fixed at 600px). The calendar fills that frame and scrolls
+   inside it; these rules set the frame's size and width.
+   If you add a second embed section, swap the selector below
+   for the block's ID, e.g. #gBJMRH.
+   ========================================================== */
+[data-block-purpose^="embed-code"]:has(.frame-container) {
+  --sh-cal-height: min(80vh, 760px);   /* visible height before scrolling */
+}
+
+/* Height of the scroll area */
+[data-block-purpose^="embed-code"] .frame-container {
+  height: var(--sh-cal-height) !important;
+}
+
+/* Wider section with slimmer side padding */
+[data-block-purpose^="embed-code"]:has(.frame-container) .container {
+  max-width: 1200px !important;
+  padding-left: 24px !important;
+  padding-right: 24px !important;
+}
+
+/* The grid column holding the code: full width, no gutters */
+[data-block-purpose^="embed-code"] .w-cell:has(.custom-code-container) {
+  flex: 0 0 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+[data-block-purpose^="embed-code"] .custom-code-container,
+[data-block-purpose^="embed-code"] .frame-container,
+[data-block-purpose^="embed-code"] .frame-container > iframe {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+@media (max-width: 599px) {
+  [data-block-purpose^="embed-code"]:has(.frame-container) {
+    --sh-cal-height: 75vh;
+  }
+  [data-block-purpose^="embed-code"]:has(.frame-container) .container {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
   }
 }

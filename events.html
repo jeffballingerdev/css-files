@@ -227,12 +227,13 @@ html, body {
 
 <script>
 /* ---------------------------------------------------------------
-   SETTINGS: fill these in (see setup notes)
+   SETTINGS: paste the published CSV link of the Events sheet
+   (File → Share → Publish to web → Events → Comma-separated values)
    --------------------------------------------------------------- */
 const CONFIG = {
-  API_KEY: "",                 // Google Calendar API key (restricted to your GitHub Pages site)
-  CALENDAR_ID: "",             // e.g. abc123@group.calendar.google.com
+  SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1dDBQlKTjgRd6wdSOL1qzGX3hH_d_zB_MgnxyjgZsYbilsXPOJyvF9DUaBWKhHNP22WYz4hYgxpeR/pub?gid=1176354909&single=true&output=csv",
   MAX_EVENTS: 12,              // how many upcoming events to show
+  DEFAULT_BUTTON_TEXT: "Learn more",
   PARENT_ORIGIN: "*"           // optional: "https://shopsisterhood.square.site" to lock down resize messages
 };
 
@@ -241,7 +242,7 @@ const CONFIG = {
    --------------------------------------------------------------- */
 const $events = document.getElementById("events");
 const params = new URLSearchParams(location.search);
-const DEMO = params.has("demo") || !CONFIG.API_KEY || !CONFIG.CALENDAR_ID;
+const DEMO = params.has("demo") || !CONFIG.SHEET_CSV_URL;
 
 const ICONS = {
   clock: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
@@ -260,79 +261,190 @@ function el(tag, attrs = {}, children = []) {
   return n;
 }
 
-/* Google descriptions may contain HTML. Turn them into plain text and
-   pull out the first link to use as the event's button. */
-function parseDescription(raw) {
-  if (!raw) return { text: "", link: null };
-  const doc = new DOMParser().parseFromString(raw.replace(/<br\s*\/?>/gi, "\n"), "text/html");
-  let link = null;
-  const a = doc.querySelector("a[href]");
-  if (a && /^https?:/i.test(a.getAttribute("href"))) link = a.getAttribute("href");
-  let text = (doc.body.textContent || "").trim();
-  if (!link) {
-    const m = text.match(/https?:\/\/[^\s<>"]+/i);
-    if (m) link = m[0];
+function fmt(date, opts) {
+  return new Intl.DateTimeFormat("en-US", opts).format(date);
+}
+const sameDate = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+/* ---------------------------------------------------------------
+   Reading the sheet
+   --------------------------------------------------------------- */
+
+/* Small CSV parser that handles quoted cells, commas and line breaks */
+function parseCSV(text) {
+  const rows = []; let row = [], cell = "", inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') inQuotes = false;
+      else cell += c;
+    } else if (c === '"') inQuotes = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell); rows.push(row); row = []; cell = "";
+    } else cell += c;
   }
-  if (link) {
-    text = text.split(link).join("")
-      .replace(/^[^\n:]{1,30}:[ \t]*$/gm, "")        // drop a leftover label like "Tickets:"
-      .replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+/* Column names are matched loosely, so "Start time", "start time" and "StartTime" all work */
+const COLUMN_ALIASES = {
+  date: ["date", "startdate", "eventdate"],
+  enddate: ["enddate", "lastday", "until"],
+  starttime: ["starttime", "time", "from"],
+  endtime: ["endtime", "to"],
+  title: ["title", "event", "eventname", "name"],
+  location: ["location", "where", "place"],
+  description: ["description", "details", "about"],
+  buttontext: ["buttontext", "button", "buttonlabel"],
+  buttonlink: ["buttonlink", "link", "url", "ticketlink"],
+  hide: ["hide", "hidden", "draft"]
+};
+function columnMap(header) {
+  const norm = header.map((h) => h.toLowerCase().replace(/[^a-z]/g, ""));
+  const map = {};
+  for (const [key, names] of Object.entries(COLUMN_ALIASES)) {
+    const i = norm.findIndex((h) => names.includes(h));
+    if (i !== -1) map[key] = i;
   }
-  return { text, link };
+  return map;
 }
 
-function buttonLabel(url) {
-  return /ticket|eventbrite|square\.site|squareup|checkout|rsvp/i.test(url) ? "Get tickets" : "Learn more";
+/* Dates: 11/5/2026, 2026-11-05, Nov 5, 2026 … */
+function parseDate(v) {
+  v = (v || "").trim();
+  if (!v) return null;
+  let m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (m) return new Date(m[3].length === 2 ? 2000 + +m[3] : +m[3], +m[1] - 1, +m[2]);
+  const t = Date.parse(v);
+  if (isNaN(t)) return null;
+  const d = new Date(t);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-function getStart(ev) {
-  return ev.start.dateTime ? new Date(ev.start.dateTime) : dateOnly(ev.start.date);
+/* Times: 6 PM, 6:30pm, 6:00:00 PM, 18:00 … returns [hours, minutes] */
+function parseTime(v) {
+  v = (v || "").trim().toLowerCase().replace(/\./g, "");
+  if (!v) return null;
+  const m = v.match(/^(\d{1,2})(?::(\d{2}))?(?::\d{2})?\s*(am|pm|a|p)?$/);
+  if (!m) return null;
+  let h = +m[1]; const min = +(m[2] || 0); const ap = m[3];
+  if (ap && ap.startsWith("p") && h < 12) h += 12;
+  if (ap && ap.startsWith("a") && h === 12) h = 0;
+  return h > 23 || min > 59 ? null : [h, min];
 }
-function getEnd(ev) {
-  if (ev.end.dateTime) return new Date(ev.end.dateTime);
-  const d = dateOnly(ev.end.date); d.setDate(d.getDate() - 1); return d;   // all-day end is exclusive
+
+function withTime(day, t) { const d = new Date(day); d.setHours(t[0], t[1], 0, 0); return d; }
+
+function cleanLink(v) {
+  v = (v || "").trim();
+  if (!v) return null;
+  if (!/^https?:\/\//i.test(v)) v = "https://" + v;
+  try { return new URL(v).href; } catch (e) { return null; }
 }
-function dateOnly(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
 
-function fmt(date, opts, tz) {
-  return new Intl.DateTimeFormat("en-US", Object.assign({}, opts, tz ? { timeZone: tz } : {})).format(date);
-}
+function rowsToEvents(rows) {
+  if (!rows.length) return [];
+  const col = columnMap(rows[0]);
+  if (col.date === undefined || col.title === undefined) throw new Error('The sheet needs "Date" and "Title" columns.');
+  const get = (r, k) => (col[k] === undefined ? "" : (r[col[k]] || "").trim());
 
-function whenText(ev, tz) {
-  const allDay = !ev.start.dateTime;
-  const s = getStart(ev), e = getEnd(ev);
-  const zone = allDay ? undefined : tz;
-  const sameDay = fmt(s, { dateStyle: "short" }, zone) === fmt(e, { dateStyle: "short" }, zone);
-  const wk = (d) => fmt(d, { weekday: "long" }, zone);
-  const short = (d) => fmt(d, { weekday: "short", month: "short", day: "numeric" }, zone);
-  if (allDay) return sameDay ? `${wk(s)} · All day` : `${short(s)} – ${short(e)}`;
+  const events = [];
+  for (const r of rows.slice(1)) {
+    const title = get(r, "title");
+    const startDay = parseDate(get(r, "date"));
+    if (!title || !startDay) continue;                                     // skip empty or half-filled rows
+    if (/^(true|yes|y|x|hide|hidden)$/i.test(get(r, "hide"))) continue;    // drafts
 
-  const time = (d) => fmt(d, { hour: "numeric", minute: "2-digit" }, tz).replace(":00", "");
-  if (sameDay) {
-    let a = time(s), b = time(e);
-    const ma = a.slice(-2), mb = b.slice(-2);
-    if (ma === mb) a = a.slice(0, -3);          // "6 – 8 PM" instead of "6 PM – 8 PM"
-    return `${wk(s)} · ${a} – ${b}`;
+    const endDay = parseDate(get(r, "enddate")) || startDay;
+    const st = parseTime(get(r, "starttime"));
+    const et = parseTime(get(r, "endtime"));
+    const link = cleanLink(get(r, "buttonlink"));
+
+    events.push({
+      title,
+      location: get(r, "location"),
+      description: get(r, "description"),
+      allDay: !st,
+      start: st ? withTime(startDay, st) : startDay,
+      end: st && et ? withTime(endDay, et) : null,
+      lastDay: endDay < startDay ? startDay : endDay,
+      button: link ? { href: link, text: get(r, "buttontext") || CONFIG.DEFAULT_BUTTON_TEXT } : null
+    });
   }
-  return `${short(s)}, ${time(s)} – ${short(e)}, ${time(e)}`;
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return events
+    .filter((e) => e.lastDay >= today)                     // keep until the end of its last day
+    .sort((a, b) => a.start - b.start)
+    .slice(0, CONFIG.MAX_EVENTS);
 }
 
-/* .ics download so visitors can add the event to any calendar app */
+/* Accepts the "Publish to web" CSV link, or a normal sheet link shared as "Anyone with the link" */
+function csvUrl(u) {
+  if (/\/pub\?|output=csv|tqx=out:csv/.test(u)) return u;
+  const id = (u.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/) || [])[1];
+  const gid = (u.match(/[#&?]gid=(\d+)/) || [])[1];
+  if (!id) return u;
+  return `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv${gid ? `&gid=${gid}` : ""}`;
+}
+
+async function fetchEvents() {
+  const url = csvUrl(CONFIG.SHEET_CSV_URL);
+  const res = await fetch(url + (url.includes("?") ? "&" : "?") + "t=" + Date.now());
+  if (!res.ok) throw new Error(`Sheet ${res.status}`);
+  const text = await res.text();
+  if (/^\s*<(!doctype|html)/i.test(text)) throw new Error("The sheet isn't published or shared publicly.");
+  return rowsToEvents(parseCSV(text));
+}
+
+/* ---------------------------------------------------------------
+   Display text
+   --------------------------------------------------------------- */
+function whenText(ev) {
+  const wk = (d) => fmt(d, { weekday: "long" });
+  const short = (d) => fmt(d, { weekday: "short", month: "short", day: "numeric" });
+  const time = (d) => fmt(d, { hour: "numeric", minute: "2-digit" }).replace(":00", "");
+  const multiDay = !sameDate(ev.start, ev.lastDay);
+
+  if (ev.allDay) return multiDay ? `${short(ev.start)} – ${short(ev.lastDay)}` : `${wk(ev.start)} · All day`;
+  if (!ev.end) return multiDay ? `${short(ev.start)}, ${time(ev.start)} – ${short(ev.lastDay)}` : `${wk(ev.start)} · ${time(ev.start)}`;
+  if (multiDay) return `${short(ev.start)}, ${time(ev.start)} – ${short(ev.end)}, ${time(ev.end)}`;
+  let a = time(ev.start); const b = time(ev.end);
+  if (a.slice(-2) === b.slice(-2)) a = a.slice(0, -3);   // "6 – 8 PM" instead of "6 PM – 8 PM"
+  return `${wk(ev.start)} · ${a} – ${b}`;
+}
+
+/* .ics download so visitors can add the event to any calendar app.
+   Times are "floating": they mean shop time, as typed in the sheet. */
 function icsFor(ev) {
   const pad = (n) => String(n).padStart(2, "0");
-  const utc = (d) => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
-  const day = (s) => s.replace(/-/g, "");
-  const esc = (s) => (s || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
-  const { text } = parseDescription(ev.description);
+  const ymd = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const local = (d) => `${ymd(d)}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+  const now = new Date();
+  const stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}00Z`;
+  const esc = (s) => (s || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\;");
+  let dtStart, dtEnd;
+  if (ev.allDay) {
+    const after = new Date(ev.lastDay); after.setDate(after.getDate() + 1);
+    dtStart = `DTSTART;VALUE=DATE:${ymd(ev.start)}`; dtEnd = `DTEND;VALUE=DATE:${ymd(after)}`;
+  } else {
+    const end = ev.end || new Date(ev.start.getTime() + 60 * 60 * 1000);
+    dtStart = `DTSTART:${local(ev.start)}`; dtEnd = `DTEND:${local(end)}`;
+  }
   const lines = [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Sisterhood//Events//EN", "BEGIN:VEVENT",
-    `UID:${ev.id || Date.now()}@shopsisterhood`,
-    `DTSTAMP:${utc(new Date())}`,
-    ev.start.dateTime ? `DTSTART:${utc(new Date(ev.start.dateTime))}` : `DTSTART;VALUE=DATE:${day(ev.start.date)}`,
-    ev.end.dateTime ? `DTEND:${utc(new Date(ev.end.dateTime))}` : `DTEND;VALUE=DATE:${day(ev.end.date)}`,
-    `SUMMARY:${esc(ev.summary || "Sisterhood event")}`,
+    `UID:${ymd(ev.start)}-${ev.title.replace(/[^\w]+/g, "-").toLowerCase()}@shopsisterhood`,
+    `DTSTAMP:${stamp}`, dtStart, dtEnd,
+    `SUMMARY:${esc(ev.title)}`,
     ev.location ? `LOCATION:${esc(ev.location)}` : "",
-    text ? `DESCRIPTION:${esc(text)}` : "",
+    ev.description ? `DESCRIPTION:${esc(ev.description)}` : "",
+    ev.button ? `URL:${ev.button.href}` : "",
     "END:VEVENT", "END:VCALENDAR"
   ].filter(Boolean);
   return new Blob([lines.join("\r\n")], { type: "text/calendar" });
@@ -341,37 +453,33 @@ function icsFor(ev) {
 /* ---------------------------------------------------------------
    Rendering
    --------------------------------------------------------------- */
-function renderCard(ev, tz, index) {
-  const s = getStart(ev);
-  const zone = ev.start.dateTime ? tz : undefined;
-  const { text, link } = parseDescription(ev.description);
-
+function renderCard(ev, index) {
   const badge = el("div", { class: "date", "aria-hidden": "true" }, [
-    el("span", { class: "mon", text: fmt(s, { month: "short" }, zone) }),
-    el("span", { class: "day", text: fmt(s, { day: "numeric" }, zone) }),
-    el("span", { class: "dow", text: fmt(s, { weekday: "short" }, zone) })
+    el("span", { class: "mon", text: fmt(ev.start, { month: "short" }) }),
+    el("span", { class: "day", text: fmt(ev.start, { day: "numeric" }) }),
+    el("span", { class: "dow", text: fmt(ev.start, { weekday: "short" }) })
   ]);
 
   const meta = el("ul", { class: "meta" }, [
-    el("li", {}, [el("span", { html: ICONS.clock }), el("span", { text: whenText(ev, tz) })]),
+    el("li", {}, [el("span", { html: ICONS.clock }), el("span", { text: whenText(ev) })]),
     ev.location ? el("li", {}, [el("span", { html: ICONS.pin }), el("span", { text: ev.location })]) : null
   ]);
 
   const actions = el("div", { class: "actions" });
-  if (link) actions.appendChild(el("a", { class: "btn btn-primary", href: link, target: "_blank", rel: "noopener", text: buttonLabel(link) }));
+  if (ev.button) actions.appendChild(el("a", { class: "btn btn-primary", href: ev.button.href, target: "_blank", rel: "noopener", text: ev.button.text }));
   const add = el("button", { class: "btn btn-secondary", type: "button", text: "Add to calendar" });
   add.addEventListener("click", () => {
     const url = URL.createObjectURL(icsFor(ev));
-    const a = el("a", { href: url, download: `${(ev.summary || "event").replace(/[^\w]+/g, "-").toLowerCase()}.ics` });
+    const a = el("a", { href: url, download: `${ev.title.replace(/[^\w]+/g, "-").toLowerCase()}.ics` });
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   actions.appendChild(add);
 
   const body = el("div", {}, [
-    el("h3", { class: "title", text: ev.summary || "Sisterhood event" }),
+    el("h3", { class: "title", text: ev.title }),
     meta,
-    text ? el("p", { class: "desc", text }) : null,
+    ev.description ? el("p", { class: "desc", text: ev.description }) : null,
     actions
   ]);
 
@@ -380,17 +488,17 @@ function renderCard(ev, tz, index) {
   return card;
 }
 
-function render(items, tz) {
+function render(items) {
   $events.replaceChildren();
-  if (DEMO && params.get("demo") !== "empty") $events.appendChild(el("p", { class: "demo-note", text: "Preview with sample events. Add your API key and calendar ID to show real ones." }));
+  if (DEMO && params.get("demo") !== "empty") $events.appendChild(el("p", { class: "demo-note", text: "Preview with sample events. Add the published sheet link to show real ones." }));
 
   if (!items.length) {
     $events.appendChild(el("div", { class: "notice" }, [
       el("img", { class: "notice-sun", src: "sun-orange.png", alt: "", width: "72", height: "72" }),
       el("h2", { text: "New events coming soon" }),
-      el("p", { text: "We are already dreaming up what's next. Follow along on Instagram to be the first to hear about it!" }),
+      el("p", { text: "We're cooking up our next get-together. Follow along on Instagram to hear about it first." }),
       el("div", { class: "actions actions--center" }, [
-      el("a", { class: "btn btn-primary", href: "https://www.instagram.com/shopsisterhood/", target: "_blank", rel: "noopener", text: "Follow @shopsisterhood" })
+        el("a", { class: "btn btn-primary", href: "https://www.instagram.com/shopsisterhood/", target: "_blank", rel: "noopener", text: "Follow @shopsisterhood" })
       ])
     ]));
     return;
@@ -398,14 +506,13 @@ function render(items, tz) {
 
   let currentMonth = "";
   items.forEach((ev, i) => {
-    const s = getStart(ev);
-    const m = fmt(s, { month: "long", year: "numeric" }, ev.start.dateTime ? tz : undefined);
+    const m = fmt(ev.start, { month: "long", year: "numeric" });
     if (m !== currentMonth) {
       currentMonth = m;
-      const sameYear = s.getFullYear() === new Date().getFullYear();
+      const sameYear = ev.start.getFullYear() === new Date().getFullYear();
       $events.appendChild(el("h2", { class: "month", text: sameYear ? m.replace(/ \d{4}$/, "") : m }));
     }
-    $events.appendChild(renderCard(ev, tz, i));
+    $events.appendChild(renderCard(ev, i));
   });
 }
 
@@ -417,35 +524,16 @@ function renderError() {
   ]));
 }
 
-/* ---------------------------------------------------------------
-   Data
-   --------------------------------------------------------------- */
+/* Sample rows, written exactly as they'd be typed into the sheet */
 function demoEvents() {
-  const d = (offsetDays, h, m = 0) => { const x = new Date(); x.setDate(x.getDate() + offsetDays); x.setHours(h, m, 0, 0); return x.toISOString(); };
-  const ymd = (offsetDays) => { const x = new Date(); x.setDate(x.getDate() + offsetDays); return x.toISOString().slice(0, 10); };
-  return [
-    { id: "d1", summary: "Mommy & Me Fall Styling Night", start: { dateTime: d(5, 18) }, end: { dateTime: d(5, 20) },
-      location: "Sisterhood Boutique", description: "Bring your girl for an evening of outfit styling, sweet treats and 15% off fall arrivals.\nhttps://shopsisterhood.square.site/s/shop" },
-    { id: "d2", summary: "Halloween Costume Parade", start: { dateTime: d(12, 10, 30) }, end: { dateTime: d(12, 12) },
-      location: "Main Street, out front of the shop", description: "Little ghosts and goblins welcome! Candy for every costume." },
-    { id: "d3", summary: "Holiday Pop-Up Market", start: { date: ymd(26) }, end: { date: ymd(28) },
-      location: "Community Center", description: "Two days of local makers, holiday gifts and Sisterhood exclusives.\nTickets: https://www.eventbrite.com/" }
-  ];
-}
-
-async function fetchEvents() {
-  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CONFIG.CALENDAR_ID)}/events`);
-  url.search = new URLSearchParams({
-    key: CONFIG.API_KEY,
-    timeMin: new Date().toISOString(),
-    singleEvents: "true",
-    orderBy: "startTime",
-    maxResults: String(CONFIG.MAX_EVENTS)
-  });
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Calendar API ${res.status}`);
-  const data = await res.json();
-  return { items: (data.items || []).filter((e) => e.status !== "cancelled" && e.visibility !== "private"), tz: data.timeZone };
+  const day = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`; };
+  return rowsToEvents([
+    ["Date", "End date", "Start time", "End time", "Title", "Location", "Description", "Button text", "Button link", "Hide"],
+    [day(5), "", "6:00 PM", "8:00 PM", "Mommy & Me Fall Styling Night", "Sisterhood Boutique", "Bring your girl for an evening of outfit styling, sweet treats and 15% off fall arrivals.", "Get tickets", "shopsisterhood.square.site/s/shop", ""],
+    [day(12), "", "10:30 AM", "12:00 PM", "Little Makers Craft Morning", "Sisterhood Boutique", "A cozy morning of crafts and cocoa for girls ages 4–10. Moms, grab a coffee and browse!", "", "", ""],
+    [day(26), day(27), "", "", "Holiday Pop-Up Market", "Community Center", "Two days of local makers, holiday gifts and Sisterhood exclusives.", "RSVP", "https://www.eventbrite.com/", ""],
+    [day(40), "", "", "", "Secret draft event", "", "This row is hidden", "", "", "TRUE"]
+  ]);
 }
 
 /* ---------------------------------------------------------------
@@ -460,11 +548,7 @@ window.addEventListener("load", postHeight);
 
 (async function init() {
   try {
-    if (DEMO) render(params.get("demo") === "empty" ? [] : demoEvents(), "America/New_York");
-    else {
-      const { items, tz } = await fetchEvents();
-      render(items, tz);
-    }
+    render(DEMO ? (params.get("demo") === "empty" ? [] : demoEvents()) : await fetchEvents());
   } catch (err) {
     console.error(err);
     renderError();

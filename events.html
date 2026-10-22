@@ -132,8 +132,9 @@ html, body {
   font-weight: 500;
   color: var(--plum-70);
 }
-.meta li { display: inline-flex; align-items: center; gap: 6px; }
-.meta svg { flex: none; }
+.meta li { display: inline-flex; align-items: center; gap: 4px; }
+.meta li > span:first-child { display: inline-flex; }   /* icon wrapper: no inline baseline gap */
+.meta svg { display: block; flex: none; }
 .map-link {
   color: inherit;
   text-decoration: underline;

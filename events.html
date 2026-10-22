@@ -137,8 +137,11 @@ html, body {
 .meta svg { display: block; flex: none; }
 .map-link {
   color: inherit;
-  transition: color 150ms ease;
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-color: rgba(245, 107, 52, 0.6);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  transition: color 150ms ease, text-decoration-color 150ms ease;
 }
 .map-link:hover { color: var(--plum); text-decoration-color: var(--orange); }
 .map-link:focus-visible { outline: 3px solid var(--plum); outline-offset: 2px; border-radius: 4px; }
@@ -235,6 +238,20 @@ html, body {
   color: var(--plum-70);
   text-align: center;
 }
+
+/* Scrolling inside the Square frame: soft fade hints there's more below */
+html.is-scrollable body::after {
+  content: "";
+  position: sticky;
+  bottom: 0;
+  display: block;
+  height: 40px;
+  margin-top: -40px;
+  background: linear-gradient(rgba(253, 244, 162, 0), var(--yellow));
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+html.is-scrolled-end body::after { opacity: 0; }
 
 /* Phones */
 @media (max-width: 520px) {
@@ -392,6 +409,11 @@ function cleanLink(v) {
 function rowsToEvents(rows) {
   if (!rows.length) return [];
   const col = columnMap(rows[0]);
+  if (params.has("debug")) {
+    console.log("[events] header row:", rows[0]);
+    console.log("[events] column positions:", col);
+    console.table(rows.slice(1).map((r) => ({ title: r[col.title], location: r[col.location], address: r[col.address], cells: r.length })));
+  }
   if (col.date === undefined || col.title === undefined) throw new Error('The sheet needs "Date" and "Title" columns.');
   const get = (r, k) => (col[k] === undefined ? "" : (r[col[k]] || "").trim());
 
@@ -654,7 +676,14 @@ function postHeight() {
   const h = Math.ceil(document.documentElement.scrollHeight);
   if (window.parent !== window) window.parent.postMessage({ type: "sh-events-height", height: h }, CONFIG.PARENT_ORIGIN);
 }
-new ResizeObserver(postHeight).observe(document.documentElement);
+function updateScrollHint() {
+  const root = document.documentElement;
+  root.classList.toggle("is-scrollable", root.scrollHeight > window.innerHeight + 2);
+  root.classList.toggle("is-scrolled-end", window.innerHeight + window.scrollY >= root.scrollHeight - 4);
+}
+new ResizeObserver(() => { postHeight(); updateScrollHint(); }).observe(document.documentElement);
+window.addEventListener("scroll", updateScrollHint, { passive: true });
+window.addEventListener("resize", updateScrollHint);
 window.addEventListener("load", postHeight);
 
 (async function init() {

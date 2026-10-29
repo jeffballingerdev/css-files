@@ -70,12 +70,10 @@
 
 /* Space above the headline: half the circle (the part hanging below
    the photo) plus breathing room. Change --sh-gap to adjust. */
-#QYxCKS {
-  --sh-gap: 28px;
-}
-#QYxCKS .element-group h2 {
+#QYxCKS .element-group > :first-child {
   padding-top: calc(var(--sh-size) / 2 + var(--sh-gap)) !important;
   margin-top: 0 !important;
+  max-width: 1152px;
 }
 
 /* Phones (Square switches layouts at 600px) */

@@ -70,7 +70,7 @@
 
 /* Space above the headline: half the circle (the part hanging below
    the photo) plus breathing room. Change --sh-gap to adjust. */
-#QYxCKS .element-group > :first-child {
+#QYxCKS .element-group {
   padding-top: calc(var(--sh-size) / 2 + var(--sh-gap)) !important;
   margin-top: 0 !important;
   max-width: 1152px;
